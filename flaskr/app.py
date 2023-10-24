@@ -1,36 +1,26 @@
 from flask import Flask, url_for, render_template, request, redirect, session
+import cx_Oracle as db
 
 app = Flask(__name__)
 app.secret_key="secret_key"
 
-ID = "hello"
-PW = "world"
+def db():
+    dsn = db.makedsn('localhost', 1521, 'xe')
+    con = db.connect("hr", "hr", dsn)
+    cursor = con.cursor()
+    return cursor
 
 @app.route('/')
 def home():
-    if "userID" in session:
-        return render_template("home.html", userid=session.get("userID"), login=True)
-    else:
-        return render_template("home.html", login=False)
+    return render_template('index.html')
 
-@app.route("/login", methods=["get"])
+@app.route('/login')
 def login():
-    global ID, PW
-    _id_ = request.args.get("loginId")
-    _password_ = request.args.get("loginPw")
+    return render_template('login.html')
 
-    if ID == _id_ and _password_ == PW:
-        session["userId"] = _id_
-        print(session["userId"])
-        return redirect(url_for("home"))
-    else:
-        return redirect(url_for("home"))
-
-
-@app.route("/logout")
-def logout():
-    session.pop("userID")
-    return redirect(url_for("home"))
+@app.route('/LoginProcess')
+def loginProcess():
+    pass
 
 if __name__ == '__main__':
     app.run(port=5000, debug=True)
