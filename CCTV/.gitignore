@@ -1,3 +1,4 @@
 CCTV/weights/
 CCTV/face.cfg
 CCTV/face.weights
+*.weights
