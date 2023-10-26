@@ -155,20 +155,11 @@ def box_distance(box1, box2):
 def main():
     accumulated_faces = {}
     face_id = 0
-    left_zone_count = 0
-    right_zone_count = 0
-    total_count = 0
 
-    def predict_age_and_gender_webcam(show_result: bool = False, left_zone_count=0, right_zone_count=0,
-                                      accumulated_faces=None, face_id=0):
+    def predict_age_and_gender_webcam(show_result: bool = False, accumulated_faces=None, face_id=0):
         if accumulated_faces is None:
             accumulated_faces = {}
-
-        left_zone_count
-        right_zone_count
-        accumulated_faces
-        face_id
-        # 웹캠을 사용하도록 설정합니다. 비디오 파일 대신 웹캠을 엽니다.
+        
         cap = cv2.VideoCapture(0)
         cap.set(cv2.CAP_PROP_FRAME_WIDTH, frame_width)
         cap.set(cv2.CAP_PROP_FRAME_HEIGHT, frame_height)
@@ -179,14 +170,9 @@ def main():
 
         while cap.isOpened():
             ret, frame = cap.read()
-            print(frame.shape)
-            print(frame[0, 0])
 
             if not ret:
                 break
-
-            # 세로선 그리기 (화면 중앙)
-            cv2.line(frame, (frame_width // 2, 0), (frame_width // 2, frame_height), (0, 255, 0), 1)
 
             if frame.shape[1] > frame_width:
                 frame = image_resize(frame, width=frame_width)
@@ -201,16 +187,6 @@ def main():
                 end_x = start_x + width
                 end_y = start_y + height
 
-                print(start_x, start_y, end_x, end_y)
-                if width <= 0 or height <= 0 or end_x > frame.shape[1] or end_y > frame.shape[0]:
-                    print(f"Invalid coordinates for face {i}: ({start_x}, {start_y}), ({end_x}, {end_y}), size: ({width}, {height})")
-                    continue
-                face_img = frame[start_y:end_y, start_x:end_x]
-                if face_img.shape[0] <= 0 or face_img.shape[1] <= 0:
-                    print(f"Invalid face image size for face {i}: {face_img.shape}")
-                    continue
-                # 이미 처리한 얼굴인지 확인
-
                 face_box = [start_x, start_y, end_x, end_y]
 
                 face_processed = False
@@ -218,87 +194,57 @@ def main():
                     if box_distance(face_box, face_data["box"]) < 50:
                         face_processed = True
                         break
-                if not face_processed:
-                    face_id += 1
+                        
+                if not face_processed:                    
                     accumulated_faces[face_id] = {
                         "box":face_box,
                         "counted":False
                     }
-                # 얼굴이 이미 카운트되었는지 확인
-                if not accumulated_faces[face_id]["counted"]:
-                    if (end_x + start_x) / 2 < frame_width / 2:
-                        left_zone_count += 1
-                    else:
-                        right_zone_count += 1
-                    total_count = left_zone_count + right_zone_count
-                    accumulated_faces[face_id]["counted"] = True
 
-                
+                    face_img = frame[start_y:end_y, start_x:end_x]
+                    age_preds = get_age_predictions(face_img)
+                    gender_preds = get_gender_predictions(face_img)
+                    i = gender_preds[0].argmax()
+                    gender = GENDER_LIST[i]
+                    gender_confidence_score = gender_preds[0][i]                
+                    age_prediction = age_preds[0]
+                    age_index = age_prediction.argmax()
+                    age_confidence_score = age_prediction[age_index]
+                    age = AGE_INTERVALS[age_index]
 
-                if face_img.shape[0] <- 0 or face_img.shape[1] <= 0:
-                    print(f"Invalid face imgae size : {face_img.shape}")
-                    continue
-                print(face_img.shape)
-
-                age_preds = get_age_predictions(face_img)
-                gender_preds = get_gender_predictions(face_img)
-
-                # 성별과 나이 가져오기
-                i = gender_preds[0].argmax()
-                gender = GENDER_LIST[i]
-                gender_confidence_score = gender_preds[0][i]
-                
-                age_prediction = age_preds[0]
-                age_index = age_prediction.argmax()
-                age_confidence_score = age_prediction[age_index]
-                age = AGE_INTERVALS[age_index]
-
-                # 프레임에 정보 표시
+                # 데이터베이스에 성별과 나이, 감지 시간 추가
+                    if not accumulated_faces[face_id]['counted']:
+                        detect_time = datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')  # 현재 시각
+                        query = f"INSERT INTO detected_faces (face_id, gender, age, detect_time) VALUES ({face_id}, '{gender}', '{age}', '{detect_time}')"
+                        cursor.execute(query)
+                        connection.commit()
+                        accumulated_faces[face_id]['counted'] = True
+                    face_id += 1
                 label = f"{gender}-{gender_confidence_score * 100:.1f}%, {age}-{age_confidence_score * 100:.1f}%"
                 yPos = start_y - 15
                 while yPos < 15:
                     yPos += 15
+                font_scale = 0.54
                 box_color = (255, 0, 0) if gender == "Male" else (147, 20, 255)
                 cv2.rectangle(frame, (start_x, start_y), (end_x, end_y), box_color, 2)
-                font_scale = 0.54
                 cv2.putText(frame, label, (start_x, yPos),
                             cv2.FONT_HERSHEY_SIMPLEX, font_scale, box_color, 2)
-
-                # 각 얼굴에 고유 ID 표시
                 cv2.putText(frame, f"ID: {face_id}", (start_x, end_y + 20),
-                            cv2.FONT_HERSHEY_SIMPLEX, 0.54, box_color, 2)
-
-            # 프레임에 영역 카운트 텍스트 추가
-            zone_count_text = f"left_count : {left_zone_count} right_count : {right_zone_count}"
-            cv2.putText(frame, zone_count_text, (30, 30), cv2.FONT_HERSHEY_SIMPLEX, 0.8, (0, 255, 0), 2)
+                            cv2.FONT_HERSHEY_SIMPLEX, font_scale, box_color, 2)
 
             if show_result:
                 cv2.imshow("Result Video", frame)
-                # 'ESC' 키를 눌러 창을 닫습니다.
                 if cv2.waitKey(20) & 0xFF == 27:
                     break
-        print(f"left_count : {left_zone_count} right_count : {right_zone_count}")
 
-        # 데이터베이스에 데이터 추가
-        query = f"INSERT INTO face_num (total, count_date) VALUES ({left_zone_count + right_zone_count}, TO_TIMESTAMP('{formatted_time}', 'YYYY-MM-DD HH24:MI'))"
-        print(query)
-        cursor.execute(query)
-        # 커밋 작업
-        connection.commit()
-        # 커서와 연결 해제 
+        
         cursor.close()
-        # 연결 해제
         connection.close()
         cap.release()
         cv2.destroyAllWindows()
-        return left_zone_count, right_zone_count
+        return face_id
 
-    # 웹캠을 사용하여 얼굴 인식 결과 화면을 표시
-    left_zone_count, right_zone_count = predict_age_and_gender_webcam(show_result=True, left_zone_count=left_zone_count,
-                                                                      right_zone_count=right_zone_count,
-                                                                      accumulated_faces=accumulated_faces,
-                                                                      face_id=face_id)
+    face_id = predict_age_and_gender_webcam(show_result=True, accumulated_faces=accumulated_faces, face_id=face_id)
 
 if __name__ == "__main__":
     main()
-
