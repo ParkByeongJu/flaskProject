@@ -1,11 +1,14 @@
 <!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>하이테크</title>
-</head>
-<body>
-    <button onclick="location.href='/login'">CCTV를 이용해 얼굴인식 데이터라벨링 기술을 통한 시장 트랜드 분석기술</button>
-</body>
+<html>
+    <head>
+        <title>Gender Chart</title>
+        <script src="https://cdn.plot.ly/plotly-latest.min.js"></script>
+    </head>
+    <body>
+        <div id="plot"></div>
+        <script>
+            var plots = {{ plot|safe }};
+            Plotly.newPlot('plot', plots);
+        </script>
+    </body>
 </html>
