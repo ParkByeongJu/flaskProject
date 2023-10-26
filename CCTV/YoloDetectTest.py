@@ -2,6 +2,7 @@ import cv2
 import numpy as np
 import cx_Oracle as ora
 import datetime
+from keras.models import load_model
 
 # 현재 시간을 가져와서 포맷팅
 current_time = datetime.datetime.now()
@@ -26,6 +27,10 @@ YOLO_WEIGHTS = 'C:\\project\\CCTV\\face.weights'
 GENDER_MODEL = 'C:\\project\\CCTV\\weights\\deploy_gender.prototxt'
 GENDER_PROTO = 'C:\\project\\CCTV\\weights\\gender_net.caffemodel'
 
+# 나이 예측 모델 파일 경로
+AGE_MODEL = 'C:\\project\\CCTV\\weights\\deploy_age.prototxt'
+AGE_PROTO = 'C:\\project\\CCTV\\weights\\age_net.caffemodel'
+
 # 입력 이미지 전처리를 위한 평균값
 MODEL_MEAN_VALUES = (78.4263377603, 87.7689143744, 114.895847746)
 
@@ -34,10 +39,6 @@ GENDER_LIST = ['Male', 'Female']
 
 # 클래스 목록
 CLASSES = ["person"]
-
-# 나이 예측 모델 파일 경로
-AGE_MODEL = 'C:\\project\\CCTV\\weights\\deploy_age.prototxt'
-AGE_PROTO = 'C:\\project\\CCTV\\weights\\age_net.caffemodel'
 
 # 나이 구간 목록
 AGE_INTERVALS = ['(0, 2)', '(4, 6)', '(8, 12)', '(15, 20)',
@@ -160,7 +161,7 @@ def main():
         if accumulated_faces is None:
             accumulated_faces = {}
         
-        #cap = cv2.VideoCapture(0)
+        # cap = cv2.VideoCapture(0)
         cap = cv2.VideoCapture("C:\\project\\CCTV\\in.avi")
         cap.set(cv2.CAP_PROP_FRAME_WIDTH, frame_width)
         cap.set(cv2.CAP_PROP_FRAME_HEIGHT, frame_height)
@@ -187,31 +188,33 @@ def main():
             for i, (start_x, start_y, width, height) in enumerate(faces):
                 end_x = start_x + width
                 end_y = start_y + height
-
                 face_box = [start_x, start_y, end_x, end_y]
+                face_img = frame[start_y:end_y, start_x:end_x]
+                age_preds = get_age_predictions(face_img)
+                gender_preds = get_gender_predictions(face_img)
+                i = gender_preds[0].argmax()
+                gender = GENDER_LIST[i]
+                gender_confidence_score = gender_preds[0][i]                
+                age_prediction = age_preds[0]
+                age_index = age_prediction.argmax()
+                age_confidence_score = age_prediction[age_index]
+                age = AGE_INTERVALS[age_index]
 
                 face_processed = False
                 for fid, face_data in accumulated_faces.items():
                     if box_distance(face_box, face_data["box"]) < 50:
                         face_processed = True
+                        cv2.putText(frame, f"ID: {accumulated_faces[fid]['id']}", (start_x, end_y + 20), cv2.FONT_HERSHEY_SIMPLEX, font_scale, box_color, 2)
                         break
                         
                 if not face_processed:                    
                     accumulated_faces[face_id] = {
                         "box":face_box,
-                        "counted":False
+                        "counted":False,
+                        "id": face_id
                     }
 
-                    face_img = frame[start_y:end_y, start_x:end_x]
-                    age_preds = get_age_predictions(face_img)
-                    gender_preds = get_gender_predictions(face_img)
-                    i = gender_preds[0].argmax()
-                    gender = GENDER_LIST[i]
-                    gender_confidence_score = gender_preds[0][i]                
-                    age_prediction = age_preds[0]
-                    age_index = age_prediction.argmax()
-                    age_confidence_score = age_prediction[age_index]
-                    age = AGE_INTERVALS[age_index]
+                    
 
                 # 데이터베이스에 성별과 나이, 감지 시간 추가
                     if not accumulated_faces[face_id]['counted']:
@@ -220,7 +223,7 @@ def main():
                         cursor.execute(query)
                         connection.commit()
                         accumulated_faces[face_id]['counted'] = True
-                    face_id += 1
+                    
                 label = f"{gender}-{gender_confidence_score * 100:.1f}%, {age}-{age_confidence_score * 100:.1f}%"
                 yPos = start_y - 15
                 while yPos < 15:
@@ -228,11 +231,8 @@ def main():
                 font_scale = 0.54
                 box_color = (255, 0, 0) if gender == "Male" else (147, 20, 255)
                 cv2.rectangle(frame, (start_x, start_y), (end_x, end_y), box_color, 2)
-                cv2.putText(frame, label, (start_x, yPos),
-                            cv2.FONT_HERSHEY_SIMPLEX, font_scale, box_color, 2)
-                cv2.putText(frame, f"ID: {face_id}", (start_x, end_y + 20),
-                            cv2.FONT_HERSHEY_SIMPLEX, font_scale, box_color, 2)
-
+                cv2.putText(frame, label, (start_x, yPos), cv2.FONT_HERSHEY_SIMPLEX, font_scale, box_color, 2)                
+                face_id += 1
             if show_result:
                 cv2.imshow("Result Video", frame)
                 if cv2.waitKey(20) & 0xFF == 27:
