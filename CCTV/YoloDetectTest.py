@@ -56,7 +56,10 @@ age_net = cv2.dnn.readNetFromCaffe(AGE_MODEL, AGE_PROTO)
 # 성별 예측 모델 불러오기
 gender_net = cv2.dnn.readNetFromCaffe(GENDER_MODEL, GENDER_PROTO)
 
+# 얼굴 탐지에 사용할 최소 확신도
 CONFIDENCE_THRESHOLD = 0.5
+# NMS 임계값
+NMS_THRESHOLD = 0.4
 
 
 def get_faces(frame):
@@ -65,14 +68,15 @@ def get_faces(frame):
     layer_names = face_net.getUnconnectedOutLayersNames()
     outs = face_net.forward(layer_names)
 
-    faces = []
-    
+    boxes = []
+    confidences = []
+
     for out in outs:
         for detection in out:
             scores = detection[5:]
             class_id = np.argmax(scores)
             confidence = scores[class_id]
-            if class_id == 0 and confidence > CONFIDENCE_THRESHOLD:  # Class ID 0 corresponds to "person" in COCO dataset.
+            if class_id == 0 and confidence > CONFIDENCE_THRESHOLD:
                 center_x = int(detection[0] * frame.shape[1])
                 center_y = int(detection[1] * frame.shape[0])
                 width = int(detection[2] * frame.shape[1])
@@ -81,7 +85,19 @@ def get_faces(frame):
                 start_y = center_y - height // 2
                 end_x = start_x + width
                 end_y = start_y + height
-                faces.append((start_x, start_y, end_x, end_y))
+
+                if width <= 0 or height <= 0:
+                    print(f"Invalid face image size: ({width},{height})")
+                    continue
+
+                boxes.append([start_x, start_y, width, height])
+                confidences.append(float(confidence))
+    # NMS를 적용하여 겹치는 박스를 제거
+    indices = cv2.dnn.NMSBoxes(boxes, confidences, CONFIDENCE_THRESHOLD, NMS_THRESHOLD)
+    faces = [boxes[i] for i in indices]
+
+    # 얼굴이 인식이 제대로 이루어지는지 출력
+    print(f"Detected {len(faces)} faces")
     
     return faces
 
@@ -163,6 +179,8 @@ def main():
 
         while cap.isOpened():
             ret, frame = cap.read()
+            print(frame.shape)
+            print(frame[0, 0])
 
             if not ret:
                 break
@@ -175,10 +193,26 @@ def main():
 
             faces = get_faces(frame)
 
-            for i, (start_x, start_y, end_x, end_y) in enumerate(faces):
-                face_box = (start_x, start_y, end_x, end_y)
+            if not faces:
+                print("NO faces detected.")
+                continue
 
+            for i, (start_x, start_y, width, height) in enumerate(faces):
+                end_x = start_x + width
+                end_y = start_y + height
+
+                print(start_x, start_y, end_x, end_y)
+                if width <= 0 or height <= 0 or end_x > frame.shape[1] or end_y > frame.shape[0]:
+                    print(f"Invalid coordinates for face {i}: ({start_x}, {start_y}), ({end_x}, {end_y}), size: ({width}, {height})")
+                    continue
+                face_img = frame[start_y:end_y, start_x:end_x]
+                if face_img.shape[0] <= 0 or face_img.shape[1] <= 0:
+                    print(f"Invalid face image size for face {i}: {face_img.shape}")
+                    continue
                 # 이미 처리한 얼굴인지 확인
+
+                face_box = [start_x, start_y, end_x, end_y]
+
                 face_processed = False
                 for fid, face_data in accumulated_faces.items():
                     if box_distance(face_box, face_data["box"]) < 50:
@@ -199,7 +233,12 @@ def main():
                     total_count = left_zone_count + right_zone_count
                     accumulated_faces[face_id]["counted"] = True
 
-                face_img = frame[start_y: end_y, start_x: end_x]
+                
+
+                if face_img.shape[0] <- 0 or face_img.shape[1] <= 0:
+                    print(f"Invalid face imgae size : {face_img.shape}")
+                    continue
+                print(face_img.shape)
 
                 age_preds = get_age_predictions(face_img)
                 gender_preds = get_gender_predictions(face_img)
@@ -246,7 +285,7 @@ def main():
         cursor.execute(query)
         # 커밋 작업
         connection.commit()
-        # 커서와 연결 해제
+        # 커서와 연결 해제 
         cursor.close()
         # 연결 해제
         connection.close()
